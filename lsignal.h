@@ -1,8 +1,6 @@
 /*
  * lsignal.h -- Signal Handler Header for Lua
  *
- * Version: 1.000
- *
  * Copyright (C) 2007  Patrick J. Donnelly (batrick@unm.edu)
  *
  * This software is distributed under the same license as Lua 5.0:

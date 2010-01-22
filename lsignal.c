@@ -1,8 +1,6 @@
 /*
  * lsignal.c -- Signal Handler Library for Lua
  *
- * Version: 1.000
- *
  * Copyright (C) 2007  Patrick J. Donnelly (batrick@unm.edu)
  *
  * This software is distributed under the same license as Lua 5.0:
@@ -161,16 +159,6 @@ static void handle(int sig)
   Nsig = sig;
 
   lua_sethook(Lsig, sighook, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
-  /*
-  switch (sig)
-  {
-    case SIGABRT: ;
-    case SIGFPE: ;
-    case SIGILL: ;
-    case SIGINT: ;
-    case SIGSEGV: ;
-    case SIGTERM: ;
-  } */
 }
 
 /*
@@ -259,7 +247,7 @@ static int l_signal(lua_State *L)
 static int l_raise(lua_State *L)
 {
   int args = lua_gettop(L);
-  int t = 0; /* type */
+  int t; /* type */
   lua_Number ret;
 
   luaL_checkany(L, 1);
