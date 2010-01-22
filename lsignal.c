@@ -1,7 +1,7 @@
 /*
  * lsignal.c -- Signal Handler Library for Lua
  *
- * Copyright (C) 2010  Patrick J. Donnelly (batrick@unm.edu)
+ * Copyright (C) 2010  Patrick J. Donnelly (batrick@batbytes.com)
  *
  * This software is distributed under the same license as Lua 5.0:
  *
