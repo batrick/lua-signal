@@ -1,9 +1,13 @@
 This is a signal library for Lua 5.1. It depends on ANSI C signals and has
 some extensions that are available in POSIX, such as kill().
 
-The library should compile cleanly and easily as a shared object:
+Use Make to compile and install:
 
-gcc -shared -o signal.so lsignal.c
+make && make install
+
+You can set the destination manually using:
+
+make install SIGNAL_DESTINATION=/path/to/location
 
 This code is distributed under the same license as Lua 5.0. You may view
 the license at the top of any of the source files.
