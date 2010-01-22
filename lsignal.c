@@ -1,7 +1,7 @@
 /*
  * lsignal.c -- Signal Handler Library for Lua
  *
- * Copyright (C) 2007  Patrick J. Donnelly (batrick@unm.edu)
+ * Copyright (C) 2010  Patrick J. Donnelly (batrick@unm.edu)
  *
  * This software is distributed under the same license as Lua 5.0:
  *
@@ -24,9 +24,18 @@
  * OTHER DEALINGS IN THE SOFTWARE. 
 */
 
-#include "lsignal.h"
+#include <lua.h>
+#include <lauxlib.h>
+
+#include <signal.h>
 
 #define LUA_SIGNAL "lua_signal"
+
+struct lua_signal
+{
+  char *name; /* name of the signal */
+  int sig; /* the signal */
+};
 
 static const struct lua_signal lua_signals[] = {
   /* ANSI C signals */
