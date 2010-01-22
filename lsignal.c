@@ -184,7 +184,7 @@ static void handle(int sig)
 static int l_signal(lua_State *L)
 {
   int args = lua_gettop(L);
-  int t, sig; /* type, signal */
+  int t, sig = -1; /* type, signal */
 
   /* get type of signal */
   luaL_checkany(L, 1);
@@ -255,7 +255,6 @@ static int l_signal(lua_State *L)
 
 static int l_raise(lua_State *L)
 {
-  int args = lua_gettop(L);
   int t; /* type */
   lua_Number ret;
 
