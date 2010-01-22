@@ -105,6 +105,7 @@ static int l_signal(lua_State *L)
     lua_pushnil(L);
     lua_settable(L, -4);
     lua_remove(L, -2); /* remove LUA_SIGNAL table */
+    signal(sig, SIG_DFL);
   } else
   {
     luaL_checktype(L, 2, LUA_TFUNCTION);
@@ -172,7 +173,7 @@ static int l_raise(lua_State *L)
   return 1;
 }
 
-static const struct luaL_Reg sig[] = {
+static const struct luaL_Reg lsignal_lib[] = {
   {"signal", l_signal},
   {"raise", l_raise},
   {NULL, NULL}
@@ -183,7 +184,7 @@ int luaopen_signal(lua_State *L)
   int i = 0;
 
   /* add the library */
-  luaL_register(L, "signal", sig);
+  luaL_register(L, "signal", lsignal_lib);
 
   /* push lua_signals table into the registry */
   /* put the signals inside the library table too,
