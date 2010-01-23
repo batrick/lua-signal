@@ -158,8 +158,8 @@ static void *srealloc (void *pold, size_t nsize)
   return pnew;
 }
 
-static int *signal_stack = NULL;
-static size_t signal_stack_top = 0;
+sig_atomic_t *signal_stack = NULL;
+sig_atomic_t signal_stack_top = 0;
 
 /* FIXME RACE CONDITION HERE for stack and stack top */
 static void hook (lua_State *L, lua_Debug *ar)
@@ -262,7 +262,7 @@ static int l_raise (lua_State *L)
 
 static int l_kill (lua_State *L)
 {
-  lua_pushnumber(L, kill((pid_t) luaL_checknumber(L, 1), get_signal(L, 2)));
+  lua_pushnumber(L, kill(luaL_checknumber(L, 1), get_signal(L, 2)));
   return 1;
 }
 
