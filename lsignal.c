@@ -25,15 +25,19 @@
 */
 
 #define LIB_NAME          "signal"
+#define LUA_SIGNAL_NAME   "LUA_SIGNAL"
 #define LUA_SIGNAL_ERROR  1
 
-#define INCLUDE_KILL (defined(_POSIX_SOURCE) || define(sun) || defined(__sun))
+#if (defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
+  #define INCLUDE_KILL
+#endif
 
 #include <lua.h>
 #include <lauxlib.h>
 
 #include <errno.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <string.h>
 
 struct lua_signal
@@ -41,15 +45,6 @@ struct lua_signal
   char *name; /* name of the signal */
   int sig; /* the signal */
 };
-
-/*
-struct signal_stack_element {
-  lua_Hook hook;
-  int mask;
-  int count;
-  int sig;
-};
-*/
 
 static const struct lua_signal lua_signals[] = {
   /* ANSI C signals */
@@ -155,11 +150,6 @@ static const struct lua_signal lua_signals[] = {
   {NULL, 0}
 };
 
-static int signal_stack[4096];
-/*
-static int *signal_stack = NULL;
-static size_t signal_stack_n = 0;
-
 static void *srealloc (void *pold, size_t nsize)
 {
   void *pnew = realloc(pold, nsize);
@@ -167,32 +157,28 @@ static void *srealloc (void *pold, size_t nsize)
     exit(LUA_SIGNAL_ERROR);
   return pnew;
 }
-*/
 
+static int *signal_stack = NULL;
+static size_t signal_stack_top = 0;
+
+/* FIXME RACE CONDITION HERE for stack and stack top */
 static void hook (lua_State *L, lua_Debug *ar)
 {
-  lua_pushstring(L, LUA_SIGNAL);
-  lua_gettable(L, LUA_REGISTRYINDEX);
-  lua_pushnumber(L, Nsig);
-  lua_gettable(L, -2);
-
-  lua_call(L, 0, 0);
-
-  /* set the old hook */
-  lua_sethook(L, Hsig, Hmask, Hcount);
+  while (signal_stack_top > 0)
+  {
+    lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
+    lua_pushnumber(L, signal_stack[--signal_stack_top]);
+    lua_rawget(L, -2);
+    lua_call(L, 0, 0);
+    lua_pop(L, 1);
+    signal_stack = srealloc(signal_stack, signal_stack_top*sizeof(int));
+  }
 }
 
 static void handle (int sig)
 {
-  signal_stack = srealloc(signal_stack,
-      sizeof(signal_stack_element) * ++signal_stack_n);
-
-  signal_stack[signal_stack_n-1].hook = lua_gethook(Lsig);
-  signal_stack[signal_stack_n-1].mask = lua_gethookmask(Lsig);
-  signal_stack[signal_stack_n-1].count = lua_gethookcount(Lsig);
-  signal_stack[signal_stack_n-1].sig = sig;
-
-  lua_sethook(Lsig, hook, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+  signal_stack = srealloc(signal_stack, ++signal_stack_top*sizeof(int));
+  signal_stack[signal_stack_top-1] = sig;
 }
 
 static int get_signal (lua_State *L, int idx)
@@ -247,8 +233,6 @@ static int l_signal (lua_State *L)
       lua_pushstring(L, strerror(errno));
       return 2;
     }
-
-    Lsig = L; /* Set the state for the handler */
   }
   return 1;
 }
@@ -265,7 +249,7 @@ static int l_raise (lua_State *L)
   return 1;
 }
 
-#if INCLUDE_KILL
+#ifdef INCLUDE_KILL
 
 /* define some posix only functions */
 
@@ -294,7 +278,7 @@ int luaopen_signal (lua_State *L)
   static const struct luaL_Reg lib[] = {
     {"signal", l_signal},
     {"raise", l_raise},
-#if INCLUDE_KILL
+#ifdef INCLUDE_KILL
     {"kill", l_kill},
 #endif
     {NULL, NULL}
@@ -305,6 +289,8 @@ int luaopen_signal (lua_State *L)
   /* environment */
   lua_newtable(L);
   lua_replace(L, LUA_ENVIRONINDEX);
+  lua_pushvalue(L, LUA_ENVIRONINDEX);
+  lua_setfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME); /* for hooks */
 
   /* Set the thread for our library, we hope this is the main thread.
    * This hook will propagate into other new threads.
