@@ -26,6 +26,7 @@
 
 #define LIB_NAME          "signal"
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
+#define LUA_SIGNAL_COUNT  1e4
 #define LUA_SIGNAL_ERROR  1
 
 #if (defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
@@ -172,7 +173,8 @@ static void hook (lua_State *L, lua_Debug *ar)
     lua_call(L, 0, 0);
     lua_pop(L, 1);
     signal_stack = srealloc(signal_stack, signal_stack_top*sizeof(int));
-    lua_sethook(L, hook, LUA_MASKCOUNT, 1e5); /* restore original hook count */
+    /* restore original hook count */
+    lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
   }
 }
 
@@ -307,7 +309,7 @@ int luaopen_signal (lua_State *L)
   lua_pushthread(L);
   lua_pushboolean(L, 1);
   lua_rawset(L, LUA_ENVIRONINDEX); /* prevent GC */
-  lua_sethook(L, hook, LUA_MASKCOUNT, 1e5);
+  lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
 
   /* add the library */
   luaL_register(L, LIB_NAME, lib);
