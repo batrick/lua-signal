@@ -24,20 +24,32 @@
  * OTHER DEALINGS IN THE SOFTWARE. 
 */
 
-#define LIB_NAME   "signal"
+#define LIB_NAME          "signal"
+#define LUA_SIGNAL_ERROR  1
 
 #define INCLUDE_KILL (defined(_POSIX_SOURCE) || define(sun) || defined(__sun))
 
 #include <lua.h>
 #include <lauxlib.h>
 
+#include <errno.h>
 #include <signal.h>
+#include <string.h>
 
 struct lua_signal
 {
   char *name; /* name of the signal */
   int sig; /* the signal */
 };
+
+/*
+struct signal_stack_element {
+  lua_Hook hook;
+  int mask;
+  int count;
+  int sig;
+};
+*/
 
 static const struct lua_signal lua_signals[] = {
   /* ANSI C signals */
@@ -143,13 +155,21 @@ static const struct lua_signal lua_signals[] = {
   {NULL, 0}
 };
 
-static int Nsig = 0;
-static lua_State *Lsig = NULL;
-static lua_Hook Hsig = NULL;
-static int Hmask = 0;
-static int Hcount = 0;
+static int signal_stack[4096];
+/*
+static int *signal_stack = NULL;
+static size_t signal_stack_n = 0;
 
-static void sighook (lua_State *L, lua_Debug *ar)
+static void *srealloc (void *pold, size_t nsize)
+{
+  void *pnew = realloc(pold, nsize);
+  if (pnew == NULL && nsize > 0)
+    exit(LUA_SIGNAL_ERROR);
+  return pnew;
+}
+*/
+
+static void hook (lua_State *L, lua_Debug *ar)
 {
   lua_pushstring(L, LUA_SIGNAL);
   lua_gettable(L, LUA_REGISTRYINDEX);
@@ -164,78 +184,71 @@ static void sighook (lua_State *L, lua_Debug *ar)
 
 static void handle (int sig)
 {
-  Hsig = lua_gethook(Lsig);
-  Hmask = lua_gethookmask(Lsig);
-  Hcount = lua_gethookcount(Lsig);
-  Nsig = sig;
+  signal_stack = srealloc(signal_stack,
+      sizeof(signal_stack_element) * ++signal_stack_n);
 
-  lua_sethook(Lsig, sighook, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+  signal_stack[signal_stack_n-1].hook = lua_gethook(Lsig);
+  signal_stack[signal_stack_n-1].mask = lua_gethookmask(Lsig);
+  signal_stack[signal_stack_n-1].count = lua_gethookcount(Lsig);
+  signal_stack[signal_stack_n-1].sig = sig;
+
+  lua_sethook(Lsig, hook, LUA_MASKCALL | LUA_MASKRET | LUA_MASKCOUNT, 1);
+}
+
+static int get_signal (lua_State *L, int idx)
+{
+  switch (lua_type(L, idx))
+  {
+    case LUA_TNUMBER:
+      return (int) lua_tonumber(L, idx);
+    case LUA_TSTRING:
+      lua_pushvalue(L, idx);
+      lua_rawget(L, LUA_ENVIRONINDEX);
+      if (!lua_isnumber(L, -1))
+        return luaL_argerror(L, idx, "invalid signal string");
+      lua_replace(L, idx);
+      return (int) lua_tonumber(L, idx);
+    default:
+      return luaL_argerror(L, idx, "expected signal string/number");
+  }
 }
 
 /*
- * l_signal == signal(signal [, func [, chook]])
+ * l_signal == signal(signal [, func])
  *
  * signal = signal number or string
  * func = Lua function to call
- * chook = catch within C functions
- *         if caught, Lua function _must_
- *         exit, as the stack is most likely
- *         in an unstable state.
 */  
 
 static int l_signal (lua_State *L)
 {
-  int args = lua_gettop(L);
-  int t, sig; /* type, signal */
+  int sig = get_signal(L, 1);
 
-  /* get type of signal */
-  luaL_checkany(L, 1);
-  t = lua_type(L, 1);
-  if (t == LUA_TNUMBER)
-    sig = (int) lua_tonumber(L, 1);
-  else if (t == LUA_TSTRING)
-  {
-    lua_pushvalue(L, 1);
-    lua_gettable(L, LUA_ENVIRONINDEX);
-    if (!lua_isnumber(L, -1))
-      luaL_error(L, "invalid signal string");
-    sig = (int) lua_tonumber(L, -1);
-    lua_pop(L, 1); /* get rid of number we pushed */
-  } else
-    sig = luaL_checknumber(L, 1); /* will always error, with good error msg */
+  lua_pushvalue(L, 1);
+  lua_rawget(L, LUA_ENVIRONINDEX); /* return old handler */
 
   /* set handler */
-  if (args == 1 || lua_isnil(L, 2)) /* clear handler */
+  if (lua_isnoneornil(L, 2)) /* clear handler */
   {
-    lua_pushnumber(L, sig);
-    lua_gettable(L, LUA_ENVIRONINDEX); /* return old handler */
-    lua_pushnumber(L, sig);
+    lua_pushvalue(L, 1);
     lua_pushnil(L);
-    lua_settable(L, LUA_ENVIRONINDEX);
+    lua_rawset(L, LUA_ENVIRONINDEX);
     signal(sig, SIG_DFL);
   } else
   {
     luaL_checktype(L, 2, LUA_TFUNCTION);
-    lua_pushnumber(L, sig);
+    lua_pushvalue(L, 1);
     lua_pushvalue(L, 2);
-    lua_settable(L, LUA_ENVIRONINDEX);
+    lua_rawset(L, LUA_ENVIRONINDEX);
 
-    /* Set the state for the handler */
-    Lsig = L;
-
-    if (lua_toboolean(L, 3)) /* c hook? */
+    if (signal(sig, handle) == SIG_ERR)
     {
-      if (signal(sig, handle) == SIG_ERR)
-        lua_pushboolean(L, 0);
-      else
-        lua_pushboolean(L, 1);
-    } else /* lua_hook */
-    {
-      if (signal(sig, handle) == SIG_ERR)
-        lua_pushboolean(L, 0);
-      else
-        lua_pushboolean(L, 1);
+      lua_pushnil(L);
+      lua_pushstring(L, strerror(errno));
+      return 2;
     }
+
+    Lsig = L; /* Set the state for the handler */
   }
   return 1;
 }
@@ -248,30 +261,7 @@ static int l_signal (lua_State *L)
 
 static int l_raise (lua_State *L)
 {
-  int t; /* type */
-  lua_Number ret;
-
-  luaL_checkany(L, 1);
-
-  t = lua_type(L, 1);
-  if (t == LUA_TNUMBER)
-  {
-    ret = (lua_Number) raise((int) lua_tonumber(L, 1));
-    lua_pushnumber(L, ret);
-  } else if (t == LUA_TSTRING)
-  {
-    lua_pushstring(L, LUA_SIGNAL);
-    lua_gettable(L, LUA_REGISTRYINDEX);
-    lua_pushvalue(L, 1);
-    lua_gettable(L, -2);
-    if (!lua_isnumber(L, -1))
-      luaL_error(L, "invalid signal string");
-    ret = (lua_Number) raise((int) lua_tonumber(L, -1));
-    lua_pop(L, 1); /* get rid of number we pushed */
-    lua_pushnumber(L, ret);
-  } else
-    luaL_checknumber(L, 1); /* will always error, with good error msg */
-
+  lua_pushnumber(L, raise(get_signal(L, 1)));
   return 1;
 }
 
@@ -288,34 +278,16 @@ static int l_raise (lua_State *L)
 
 static int l_kill (lua_State *L)
 {
-  int t; /* type */
-  lua_Number ret; /* return value */
-
-  luaL_checknumber(L, 1); /* must be int for pid */
-  luaL_checkany(L, 2); /* check for a second arg */
-
-  t = lua_type(L, 2);
-  if (t == LUA_TNUMBER)
-  {
-    ret = (lua_Number) kill((int) lua_tonumber(L, 1),
-        (int) lua_tonumber(L, 2));
-    lua_pushnumber(L, ret);
-  } else if (t == LUA_TSTRING)
-  {
-    lua_pushvalue(L, 2);
-    lua_gettable(L, LUA_ENVIRONINDEX);
-    if (!lua_isnumber(L, -1))
-      luaL_error(L, "invalid signal string");
-    ret = (lua_Number) kill((int) lua_tonumber(L, 1),
-        (int) lua_tonumber(L, -1));
-    lua_pop(L, 1); /* get rid of number we pushed */
-    lua_pushnumber(L, ret);
-  } else
-    luaL_checknumber(L, 2); /* will always error, with good error msg */
+  lua_pushnumber(L, kill((pid_t) luaL_checknumber(L, 1), get_signal(L, 2)));
   return 1;
 }
 
 #endif
+
+static int interrupted (lua_State *L)
+{
+  return luaL_error(L, "interrupted!");
+}
 
 int luaopen_signal (lua_State *L)
 {
@@ -334,6 +306,15 @@ int luaopen_signal (lua_State *L)
   lua_newtable(L);
   lua_replace(L, LUA_ENVIRONINDEX);
 
+  /* Set the thread for our library, we hope this is the main thread.
+   * This hook will propagate into other new threads.
+   * We set a reasonable number of calls via byte code count.
+   */
+  lua_pushthread(L);
+  lua_pushboolean(L, 1);
+  lua_rawset(L, LUA_ENVIRONINDEX); /* prevent GC */
+  lua_sethook(L, hook, LUA_MASKCOUNT, 1e5);
+
   /* add the library */
   luaL_register(L, LIB_NAME, lib);
 
@@ -346,9 +327,15 @@ int luaopen_signal (lua_State *L)
     /* signal table */
     lua_pushstring(L, lua_signals[i].name);
     lua_pushnumber(L, lua_signals[i].sig);
-    lua_settable(L, -5);
+    lua_settable(L, -3);
     i++;
   }
+
+  /* set default interrupt handler */
+  lua_pushnumber(L, SIGINT);
+  lua_pushcfunction(L, interrupted);
+  lua_rawset(L, LUA_ENVIRONINDEX);
+  signal(SIGINT, handle);
 
   return 1;
 }
