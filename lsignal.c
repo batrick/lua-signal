@@ -200,13 +200,27 @@ static int get_signal (lua_State *L, int idx)
   }
 }
 
+static int status (lua_State *L, int s)
+{
+  if (s)
+  {
+    lua_pushboolean(L, 1);
+    return 1;
+  }
+  else
+  {
+    lua_pushnil(L);
+    lua_pushstring(L, strerror(errno));
+    return 2;
+  }
+}
+
 /*
- * l_signal == signal(signal [, func])
+ * old_handler[, err] == signal(signal [, func])
  *
  * signal = signal number or string
  * func = Lua function to call
 */  
-
 static int l_signal (lua_State *L)
 {
   int sig = get_signal(L, 1);
@@ -229,26 +243,20 @@ static int l_signal (lua_State *L)
     lua_rawset(L, LUA_ENVIRONINDEX);
 
     if (signal(sig, handle) == SIG_ERR)
-    {
-      lua_pushnil(L);
-      lua_pushstring(L, strerror(errno));
-      return 2;
-    }
+      return status(L, 0);
   }
   return 1;
 }
 
 /*
- * l_raise == raise(signal)
+ * status, err = raise(signal)
  *
  * signal = signal number or string
 */  
-
 static int l_raise (lua_State *L)
 {
-  lua_pushnumber(L, raise(get_signal(L, 1)));
   lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
-  return 1;
+  return status(L, raise(get_signal(L, 1) == 0));
 }
 
 #ifdef INCLUDE_KILL
@@ -256,16 +264,14 @@ static int l_raise (lua_State *L)
 /* define some posix only functions */
 
 /*
- * l_kill == kill(pid, signal)
+ * status, err = kill(pid, signal)
  *
  * pid = process id
  * signal = signal number or string
 */  
-
 static int l_kill (lua_State *L)
 {
-  lua_pushnumber(L, kill(luaL_checknumber(L, 1), get_signal(L, 2)));
-  return 1;
+  return status(L, kill(luaL_checknumber(L, 1), get_signal(L, 2)) == 0);
 }
 
 #endif
