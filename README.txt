@@ -23,19 +23,19 @@ the license at the top of any of the source files.
 
 All of these functions are placed inside the signal table.
 
-signal(sig, handler)
+old_handler, err = signal(sig, handler)
   sig = number or string representing the signal for the handler.
   handler = nil or a function, nil to clear a previous handler, and function
             to set the handler.
 
-raise(sig)
+status[, err] = raise(sig)
   sig = number or string representing the signal for the handler.
 
 ========================
 
 For POSIX compliant systems, the following are defined:
 
-kill(pid, sig)
+status[, err] = kill(pid, sig)
   pid = number representing the process to receive the signal.
   sig = number or string representing the signal to be sent.
 
