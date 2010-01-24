@@ -46,8 +46,8 @@
 
 struct lua_signal
 {
-  char *name; /* name of the signal */
-  int sig; /* the signal */
+  const char *name; /* name of the signal */
+  const int sig; /* the signal */
 };
 
 static const struct lua_signal lua_signals[] = {
