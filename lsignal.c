@@ -24,6 +24,8 @@
  * OTHER DEALINGS IN THE SOFTWARE. 
 */
 
+// TODO: add extra signals, sigaction
+
 #define LIB_NAME          "signal"
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
 #define LUA_SIGNAL_COUNT  1e4
@@ -31,6 +33,7 @@
 
 #if (defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
   #define INCLUDE_KILL
+  #define USE_SIGACTION
 #endif
 
 #include <lua.h>
@@ -151,37 +154,30 @@ static const struct lua_signal lua_signals[] = {
   {NULL, 0}
 };
 
-static void *srealloc (void *pold, size_t nsize)
-{
-  void *pnew = realloc(pold, nsize);
-  if (pnew == NULL && nsize > 0)
-    exit(LUA_SIGNAL_ERROR);
-  return pnew;
-}
+static volatile sig_atomic_t *signal_stack = NULL;
+static int signal_stack_top;
 
-static sig_atomic_t *signal_stack = NULL;
-static sig_atomic_t signal_stack_top = 0;
-
-/* FIXME RACE CONDITION HERE for stack and stack top */
 static void hook (lua_State *L, lua_Debug *ar)
 {
-  while (signal_stack_top > 0)
-  {
-    lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
-    lua_pushnumber(L, signal_stack[--signal_stack_top]);
-    lua_rawget(L, -2);
-    lua_call(L, 0, 0);
-    lua_pop(L, 1);
-    signal_stack = srealloc(signal_stack, signal_stack_top*sizeof(int));
-    /* restore original hook count */
-    lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
-  }
+  int i = 0;
+  for (i = 0; i < signal_stack_top; i++)
+    while (signal_stack[i] > 0)
+    {
+      lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
+      lua_pushinteger(L, i);
+      lua_rawget(L, -2);
+      lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
+      lua_pushinteger(L, i);
+      lua_call(L, 1, 0);
+      /* restore original hook count */
+      lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
+      signal_stack[i]--;
+    }
 }
 
 static void handle (int sig)
 {
-  signal_stack = srealloc(signal_stack, ++signal_stack_top*sizeof(int));
-  signal_stack[signal_stack_top-1] = sig;
+  signal_stack[sig]++;
 }
 
 static int get_signal (lua_State *L, int idx)
@@ -294,7 +290,8 @@ int luaopen_signal (lua_State *L)
     {NULL, NULL}
   };
 
-  int i = 0;
+  int i;
+  int max_signal;
 
   /* environment */
   lua_newtable(L);
@@ -314,17 +311,22 @@ int luaopen_signal (lua_State *L)
   /* add the library */
   luaL_register(L, LIB_NAME, lib);
 
-  while (lua_signals[i].name != NULL)
+  for (i = 0, max_signal = 0; lua_signals[i].name != NULL; i++)
+    if (lua_signals[i].sig > max_signal)
+      max_signal = lua_signals[i].sig+1; /* +1 !!! */
+
+  signal_stack = lua_newuserdata(L, sizeof(volatile sig_atomic_t)*max_signal);
+  memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal);
+  signal_stack_top = max_signal;
+
+  while (i--)
   {
-    /* environment table */
     lua_pushstring(L, lua_signals[i].name);
     lua_pushnumber(L, lua_signals[i].sig);
-    lua_rawset(L, LUA_ENVIRONINDEX);
-    /* signal table */
+    lua_rawset(L, LUA_ENVIRONINDEX); /* add copy to environment table */
     lua_pushstring(L, lua_signals[i].name);
     lua_pushnumber(L, lua_signals[i].sig);
-    lua_settable(L, -3);
-    i++;
+    lua_settable(L, -3); /* add copy to signal table */
   }
 
   /* set default interrupt handler */
