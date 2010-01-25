@@ -31,6 +31,7 @@
 
 #if (defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
   #define INCLUDE_KILL
+  #define INCLUDE_PAUSE
   #define USE_SIGACTION
 #endif
 
@@ -258,7 +259,7 @@ static int l_signal (lua_State *L)
       if (sigaction(sig, &act, NULL))
         return status(L, 0);
     }
-#elif
+#else
     if (signal(sig, handle) == SIG_ERR)
       return status(L, 0);
 #endif
@@ -292,21 +293,16 @@ static int l_kill (lua_State *L)
   return status(L, kill(luaL_checknumber(L, 1), get_signal(L, 2)) == 0);
 }
 
+#endif
+
+#ifdef INCLUDE_PAUSE
+
 static int l_pause (lua_State *L) /* race condition free */
 {
   sigset_t mask, old_mask;
   if (sigfillset(&mask) == -1) return status(L, 0);
   if (sigprocmask(SIG_BLOCK, &mask, &old_mask) == -1) return status(L, 0);
   if (sigsuspend(&old_mask) != -1) abort(); /* that's strange */
-  lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
-  return status(L, 0);
-}
-
-#else
-
-static int l_pause (lua_State *L) /* from stdlib.h */
-{
-  pause();
   lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
   return status(L, 0);
 }
@@ -323,9 +319,11 @@ int luaopen_signal (lua_State *L)
   static const struct luaL_Reg lib[] = {
     {"signal", l_signal},
     {"raise", l_raise},
-    {"pause", l_pause},
 #ifdef INCLUDE_KILL
     {"kill", l_kill},
+#endif
+#ifdef INCLUDE_PAUSE
+    {"pause", l_pause},
 #endif
     {NULL, NULL}
   };
