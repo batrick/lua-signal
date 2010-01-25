@@ -26,7 +26,7 @@
 
 // TODO: add extra signals, sigaction
 
-#define LIB_NAME          "signal"
+#define LUA_LIB_NAME      "signal"
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
 #define LUA_SIGNAL_COUNT  1e4
 #define LUA_SIGNAL_ERROR  1
@@ -155,28 +155,41 @@ static const struct lua_signal lua_signals[] = {
 };
 
 static volatile sig_atomic_t *signal_stack = NULL;
+static volatile sig_atomic_t signal_happened = 0;
 static int signal_stack_top;
 
 static void hook (lua_State *L, lua_Debug *ar)
 {
-  int i = 0;
-  for (i = 0; i < signal_stack_top; i++)
-    while (signal_stack[i] > 0)
-    {
-      lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
-      lua_pushinteger(L, i);
-      lua_rawget(L, -2);
-      lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
-      lua_pushinteger(L, i);
-      lua_call(L, 1, 0);
-      /* restore original hook count */
-      lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
-      signal_stack[i]--;
-    }
+  int i;
+  if (signal_happened)
+  {
+    /* FIXME RACE */
+    signal_happened = 1;
+    for (i = 0; i < signal_stack_top; i++)
+      while (signal_stack[i] > 0)
+      {
+        lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
+        lua_pushinteger(L, i);
+        lua_rawget(L, -2);
+        lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
+        for (i = 0; lua_signals[i].name != NULL; i++)
+          if (lua_signals[i].sig == i)
+          {
+            lua_pushstring(L, lua_signals[i].name);
+            break;
+          }
+        lua_pushinteger(L, i);
+        lua_call(L, 2, 0);
+        /* restore original hook count */
+        lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
+        signal_stack[i]--;
+      }
+  }
 }
 
 static void handle (int sig)
 {
+  signal_happened = 1;
   signal_stack[sig]++;
 }
 
@@ -240,8 +253,19 @@ static int l_signal (lua_State *L)
     lua_pushvalue(L, 2);
     lua_rawset(L, LUA_ENVIRONINDEX);
 
+#ifdef USE_SIGACTION
+    {
+      struct sigaction act;
+      act.sa_handler = handle;
+      sigemptyset(&act.sa_mask);
+      act.sa_flags = 0;
+      if (sigaction(sig, &act, NULL))
+        return status(L, 0);
+    }
+#elif
     if (signal(sig, handle) == SIG_ERR)
       return status(L, 0);
+#endif
   }
   return 1;
 }
@@ -309,7 +333,7 @@ int luaopen_signal (lua_State *L)
   lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
 
   /* add the library */
-  luaL_register(L, LIB_NAME, lib);
+  luaL_register(L, LUA_LIB_NAME, lib);
 
   for (i = 0, max_signal = 0; lua_signals[i].name != NULL; i++)
     if (lua_signals[i].sig > max_signal)
@@ -330,10 +354,10 @@ int luaopen_signal (lua_State *L)
   }
 
   /* set default interrupt handler */
-  lua_pushnumber(L, SIGINT);
+  lua_getfield(L, -1, "signal");
+  lua_pushinteger(L, SIGINT);
   lua_pushcfunction(L, interrupted);
-  lua_rawset(L, LUA_ENVIRONINDEX);
-  signal(SIGINT, handle);
+  lua_call(L, 2, 0);
 
   return 1;
 }
