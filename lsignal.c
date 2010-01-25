@@ -24,8 +24,6 @@
  * OTHER DEALINGS IN THE SOFTWARE. 
 */
 
-// TODO: add extra signals, sigaction
-
 #define LUA_LIB_NAME      "signal"
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
 #define LUA_SIGNAL_COUNT  1e4
@@ -160,6 +158,11 @@ static int signal_stack_top;
 static void hook (lua_State *L, lua_Debug *ar)
 {
   int i;
+  /* TODO: Check cost of this loop. Maybe use
+   * optimization "signal_happened" variable.
+   * There are race conditions with decrementing
+   * the signal stack...
+   */
   for (i = 0; i < signal_stack_top; i++)
     while (signal_stack[i] > 0)
     {
@@ -289,6 +292,25 @@ static int l_kill (lua_State *L)
   return status(L, kill(luaL_checknumber(L, 1), get_signal(L, 2)) == 0);
 }
 
+static int l_pause (lua_State *L) /* race condition free */
+{
+  sigset_t mask, old_mask;
+  if (sigfillset(&mask) == -1) return status(L, 0);
+  if (sigprocmask(SIG_BLOCK, &mask, &old_mask) == -1) return status(L, 0);
+  if (sigsuspend(&old_mask) != -1) abort(); /* that's strange */
+  lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
+  return status(L, 0);
+}
+
+#else
+
+static int l_pause (lua_State *L) /* from stdlib.h */
+{
+  pause();
+  lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
+  return status(L, 0);
+}
+
 #endif
 
 static int interrupted (lua_State *L)
@@ -301,7 +323,7 @@ int luaopen_signal (lua_State *L)
   static const struct luaL_Reg lib[] = {
     {"signal", l_signal},
     {"raise", l_raise},
-    {"abort", l_abort},
+    {"pause", l_pause},
 #ifdef INCLUDE_KILL
     {"kill", l_kill},
 #endif
@@ -331,13 +353,13 @@ int luaopen_signal (lua_State *L)
 
   for (i = 0, max_signal = 0; lua_signals[i].name != NULL; i++)
     if (lua_signals[i].sig > max_signal)
-      max_signal = lua_signals[i].sig+1; /* +1 !!! */
+      max_signal = lua_signals[i].sig+1; /* +1 !!! (for < loops) */
 
   signal_stack = lua_newuserdata(L, sizeof(volatile sig_atomic_t)*max_signal);
   memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal);
   signal_stack_top = max_signal;
 
-  while (i--)
+  while (i--) /* i set from previous for loop */
   {
     lua_pushstring(L, lua_signals[i].name);
     lua_pushnumber(L, lua_signals[i].sig);
