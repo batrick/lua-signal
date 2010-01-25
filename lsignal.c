@@ -155,41 +155,34 @@ static const struct lua_signal lua_signals[] = {
 };
 
 static volatile sig_atomic_t *signal_stack = NULL;
-static volatile sig_atomic_t signal_happened = 0;
 static int signal_stack_top;
 
 static void hook (lua_State *L, lua_Debug *ar)
 {
   int i;
-  if (signal_happened)
-  {
-    /* FIXME RACE */
-    signal_happened = 1;
-    for (i = 0; i < signal_stack_top; i++)
-      while (signal_stack[i] > 0)
-      {
-        lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
-        lua_pushinteger(L, i);
-        lua_rawget(L, -2);
-        lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
-        for (i = 0; lua_signals[i].name != NULL; i++)
-          if (lua_signals[i].sig == i)
-          {
-            lua_pushstring(L, lua_signals[i].name);
-            break;
-          }
-        lua_pushinteger(L, i);
-        lua_call(L, 2, 0);
-        /* restore original hook count */
-        lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
-        signal_stack[i]--;
-      }
-  }
+  for (i = 0; i < signal_stack_top; i++)
+    while (signal_stack[i] > 0)
+    {
+      lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
+      lua_pushinteger(L, i);
+      lua_rawget(L, -2);
+      lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
+      for (i = 0; lua_signals[i].name != NULL; i++)
+        if (lua_signals[i].sig == i)
+        {
+          lua_pushstring(L, lua_signals[i].name);
+          break;
+        }
+      lua_pushinteger(L, i);
+      lua_call(L, 2, 0);
+      /* restore original hook count */
+      lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
+      signal_stack[i]--;
+    }
 }
 
 static void handle (int sig)
 {
-  signal_happened = 1;
   signal_stack[sig]++;
 }
 
@@ -308,6 +301,7 @@ int luaopen_signal (lua_State *L)
   static const struct luaL_Reg lib[] = {
     {"signal", l_signal},
     {"raise", l_raise},
+    {"abort", l_abort},
 #ifdef INCLUDE_KILL
     {"kill", l_kill},
 #endif
