@@ -195,14 +195,14 @@ static int get_signal (lua_State *L, int idx)
   switch (lua_type(L, idx))
   {
     case LUA_TNUMBER:
-      return (int) lua_tonumber(L, idx);
+      return (int) lua_tointeger(L, idx);
     case LUA_TSTRING:
       lua_pushvalue(L, idx);
       lua_rawget(L, LUA_ENVIRONINDEX);
       if (!lua_isnumber(L, -1))
         return luaL_argerror(L, idx, "invalid signal string");
       lua_replace(L, idx);
-      return (int) lua_tonumber(L, idx);
+      return (int) lua_tointeger(L, idx);
     default:
       return luaL_argerror(L, idx, "expected signal string/number");
   }
@@ -290,7 +290,7 @@ static int l_raise (lua_State *L)
 */  
 static int l_kill (lua_State *L)
 {
-  return status(L, kill(luaL_checknumber(L, 1), get_signal(L, 2)) == 0);
+  return status(L, kill(luaL_checkinteger(L, 1), get_signal(L, 2)) == 0);
 }
 
 #endif
@@ -362,10 +362,10 @@ int luaopen_signal (lua_State *L)
   while (i--) /* i set from previous for loop */
   {
     lua_pushstring(L, lua_signals[i].name);
-    lua_pushnumber(L, lua_signals[i].sig);
+    lua_pushinteger(L, lua_signals[i].sig);
     lua_rawset(L, LUA_ENVIRONINDEX); /* add copy to environment table */
     lua_pushstring(L, lua_signals[i].name);
-    lua_pushnumber(L, lua_signals[i].sig);
+    lua_pushinteger(L, lua_signals[i].sig);
     lua_settable(L, -3); /* add copy to signal table */
   }
 
