@@ -275,7 +275,7 @@ static int l_signal (lua_State *L)
 static int l_raise (lua_State *L)
 {
   lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
-  return status(L, raise(get_signal(L, 1) == 0));
+  return status(L, raise(get_signal(L, 1)) == 0);
 }
 
 #ifdef INCLUDE_KILL
