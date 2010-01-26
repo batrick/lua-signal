@@ -356,6 +356,8 @@ int luaopen_signal (lua_State *L)
   signal_stack = lua_newuserdata(L, sizeof(volatile sig_atomic_t)*max_signal);
   memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal);
   signal_stack_top = max_signal;
+  lua_pushboolean(L, 1);
+  lua_rawset(L, -3);
 
   while (i--) /* i set from previous for loop */
   {
