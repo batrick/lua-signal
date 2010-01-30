@@ -153,17 +153,17 @@ static const struct lua_signal lua_signals[] = {
   {NULL, 0}
 };
 
+/* We may have a race condition when the stack is written to
+ * and when it is read. In the worst case one signal may be ignored
+ * because its write is overwritten by the Lua hook. I feel this is
+ * acceptable.
+ */
 static volatile sig_atomic_t *signal_stack = NULL;
 static int signal_stack_top;
 
 static void hook (lua_State *L, lua_Debug *ar)
 {
   int i;
-  /* TODO: Check cost of this loop. Maybe use
-   * optimization "signal_happened" variable.
-   * There are race conditions with decrementing
-   * the signal stack...
-   */
   for (i = 0; i < signal_stack_top; i++)
     while (signal_stack[i] > 0)
     {
@@ -181,7 +181,7 @@ static void hook (lua_State *L, lua_Debug *ar)
       lua_call(L, 2, 0);
       /* restore original hook count */
       lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
-      signal_stack[i]--;
+      signal_stack[i]--; /* warning, race condition */
     }
 }
 
@@ -337,15 +337,6 @@ int luaopen_signal (lua_State *L)
   lua_pushvalue(L, LUA_ENVIRONINDEX);
   lua_setfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME); /* for hooks */
 
-  /* Set the thread for our library, we hope this is the main thread.
-   * This hook will propagate into other new threads.
-   * We set a reasonable number of calls via byte code count.
-   */
-  lua_pushthread(L);
-  lua_pushboolean(L, 1);
-  lua_rawset(L, LUA_ENVIRONINDEX); /* prevent GC */
-  lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
-
   /* add the library */
   luaL_register(L, LUA_LIB_NAME, lib);
 
@@ -374,6 +365,8 @@ int luaopen_signal (lua_State *L)
   lua_pushinteger(L, SIGINT);
   lua_pushcfunction(L, interrupted);
   lua_call(L, 2, 0);
+
+  lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
 
   return 1;
 }
