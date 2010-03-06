@@ -29,10 +29,10 @@
 #define LUA_SIGNAL_COUNT  1e4
 #define LUA_SIGNAL_ERROR  1
 
-#if (defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
-  #define INCLUDE_KILL
-  #define INCLUDE_PAUSE
-  #define USE_SIGACTION
+#if !(defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
+  #define INCLUDE_KILL  1
+  #define INCLUDE_PAUSE 1
+  #define USE_SIGACTION 1
 #endif
 
 #include <lua.h>
@@ -250,7 +250,7 @@ static int l_signal (lua_State *L)
     lua_pushvalue(L, 2);
     lua_rawset(L, LUA_ENVIRONINDEX);
 
-#ifdef USE_SIGACTION
+#if USE_SIGACTION
     {
       struct sigaction act;
       act.sa_handler = handle;
@@ -278,7 +278,7 @@ static int l_raise (lua_State *L)
   return status(L, raise(get_signal(L, 1)) == 0);
 }
 
-#ifdef INCLUDE_KILL
+#if INCLUDE_KILL
 
 /* define some posix only functions */
 
@@ -295,7 +295,7 @@ static int l_kill (lua_State *L)
 
 #endif
 
-#ifdef INCLUDE_PAUSE
+#if INCLUDE_PAUSE
 
 static int l_pause (lua_State *L) /* race condition free */
 {
@@ -319,10 +319,10 @@ int luaopen_signal (lua_State *L)
   static const struct luaL_Reg lib[] = {
     {"signal", l_signal},
     {"raise", l_raise},
-#ifdef INCLUDE_KILL
+#if INCLUDE_KILL
     {"kill", l_kill},
 #endif
-#ifdef INCLUDE_PAUSE
+#if INCLUDE_PAUSE
     {"pause", l_pause},
 #endif
     {NULL, NULL}
@@ -348,7 +348,7 @@ int luaopen_signal (lua_State *L)
   memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal);
   signal_stack_top = max_signal;
   lua_pushboolean(L, 1);
-  lua_rawset(L, -3);
+  lua_rawset(L, LUA_ENVIRONINDEX);
 
   while (i--) /* i set from previous for loop */
   {
