@@ -25,6 +25,7 @@
 */
 
 #define LUA_LIB_NAME      "signal"
+#define LUA_LIB_VERSION   1.1
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
 #define LUA_SIGNAL_COUNT  1e4
 #define LUA_SIGNAL_ERROR  1
@@ -339,6 +340,8 @@ int luaopen_signal (lua_State *L)
 
   /* add the library */
   luaL_register(L, LUA_LIB_NAME, lib);
+  lua_pushnumber(L, LUA_LIB_VERSION);
+  lua_setfield(L, -2, "version");
 
   for (i = 0, max_signal = 0; lua_signals[i].name != NULL; i++)
     if (lua_signals[i].sig > max_signal)
