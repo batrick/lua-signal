@@ -25,8 +25,9 @@ All of these functions are placed inside the signal table.
 
 old_handler, err = signal(sig, handler)
   sig = number or string representing the signal for the handler.
-  handler = nil or a function, nil to clear a previous handler, and function
-            to set the handler.
+  handler = nil or "default" --> set signal handling to default (SIG_DFL)
+            "ignore" --> set signal handling to ignore (SIG_IGN)
+            function --> sets handler to run upon receipt of the signal
 
 status[, err] = raise(sig)
   sig = number or string representing the signal for the handler.
