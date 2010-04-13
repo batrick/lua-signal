@@ -177,6 +177,7 @@ static void hook (lua_State *L, lua_Debug *ar)
           lua_pushstring(L, lua_signals[i].name);
           break;
         }
+      if (lua_signals[i].name == NULL) lua_pushliteral(L, "");
       lua_pushinteger(L, i);
       lua_call(L, 2, 0);
       /* restore original hook count */
