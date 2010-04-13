@@ -25,7 +25,7 @@
 */
 
 #define LUA_LIB_NAME      "signal"
-#define LUA_LIB_VERSION   1.1
+#define LUA_LIB_VERSION   1.2
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
 #define LUA_SIGNAL_COUNT  1e4
 
@@ -38,6 +38,7 @@
 #include <lua.h>
 #include <lauxlib.h>
 
+#include <assert.h>
 #include <errno.h>
 #include <signal.h>
 #include <stdlib.h>
@@ -160,10 +161,17 @@ static const struct lua_signal lua_signals[] = {
  */
 static volatile sig_atomic_t *signal_stack = NULL;
 static int signal_stack_top;
+static lua_State *ML = NULL;
+static struct hook {
+  lua_Hook hook;
+  int mask;
+  int count;
+} old_hook = {NULL, 0, 0};
 
 static void hook (lua_State *L, lua_Debug *ar)
 {
   int i;
+  assert(L == ML);
   for (i = 0; i < signal_stack_top; i++)
     while (signal_stack[i] > 0)
     {
@@ -180,14 +188,22 @@ static void hook (lua_State *L, lua_Debug *ar)
       if (lua_signals[i].name == NULL) lua_pushliteral(L, "");
       lua_pushinteger(L, i);
       lua_call(L, 2, 0);
-      /* restore original hook count */
-      lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
       signal_stack[i]--; /* warning, race condition */
     }
+  lua_sethook(ML, old_hook.hook, old_hook.mask, old_hook.count);
+  old_hook.hook = NULL;
 }
 
 static void handle (int sig)
 {
+  assert(ML != NULL);
+  if (old_hook.hook == NULL) /* replace it */
+  {
+    old_hook.hook = lua_gethook(ML);
+    old_hook.mask = lua_gethookmask(ML);
+    old_hook.count = lua_gethookcount(ML);
+    lua_sethook(ML, hook, LUA_MASKCOUNT, 1);
+  }
   signal_stack[sig]++;
 }
 
@@ -275,7 +291,6 @@ static int l_signal (lua_State *L)
 */  
 static int l_raise (lua_State *L)
 {
-  lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
   return status(L, raise(get_signal(L, 1)) == 0);
 }
 
@@ -304,7 +319,6 @@ static int l_pause (lua_State *L) /* race condition free */
   if (sigfillset(&mask) == -1) return status(L, 0);
   if (sigprocmask(SIG_BLOCK, &mask, &old_mask) == -1) return status(L, 0);
   if (sigsuspend(&old_mask) != -1) abort(); /* that's strange */
-  lua_sethook(L, hook, LUA_MASKCOUNT, 1); /* force hook to run next instr */
   return status(L, 0);
 }
 
@@ -313,6 +327,23 @@ static int l_pause (lua_State *L) /* race condition free */
 static int interrupted (lua_State *L)
 {
   return luaL_error(L, "interrupted!");
+}
+
+static int library_gc (lua_State *L)
+{
+  lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
+  lua_pushnil(L);
+  while (lua_next(L, -2))
+  {
+    if (lua_isnumber(L, -2)) /* <signal, function> */
+      signal((int) lua_tointeger(L, -2), SIG_DFL);
+    lua_pop(L, 1); /* value */
+  }
+  signal_stack = NULL;
+  ML = NULL;
+  old_hook.hook = NULL;
+  signal_stack_top = 0;
+  return 0;
 }
 
 int luaopen_signal (lua_State *L)
@@ -331,6 +362,12 @@ int luaopen_signal (lua_State *L)
 
   int i;
   int max_signal;
+
+  ML = L;
+  if (lua_pushthread(L))
+    lua_pop(L, 1);
+  else
+    luaL_error(L, "library should be opened by the main thread");
 
   /* environment */
   lua_newtable(L);
@@ -369,7 +406,12 @@ int luaopen_signal (lua_State *L)
   lua_pushcfunction(L, interrupted);
   lua_call(L, 2, 0);
 
-  lua_sethook(L, hook, LUA_MASKCOUNT, LUA_SIGNAL_COUNT);
+  lua_newuserdata(L, 0);
+  lua_newtable(L);
+  lua_pushcfunction(L, library_gc);
+  lua_setfield(L, -2, "__gc");
+  lua_setmetatable(L, -2);
+  luaL_ref(L, LUA_REGISTRYINDEX); /* permanent reference until lua_close */
 
   return 1;
 }
