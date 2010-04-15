@@ -385,6 +385,10 @@ int luaopen_signal (lua_State *L)
       max_signal = lua_signals[i].sig+1; /* +1 !!! (for < loops) */
 
   signal_stack = lua_newuserdata(L, sizeof(volatile sig_atomic_t)*max_signal);
+  lua_newtable(L);
+  lua_pushcfunction(L, library_gc);
+  lua_setfield(L, -2, "__gc");
+  lua_setmetatable(L, -2); /* when userdata is gc'd, close library */
   memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal);
   signal_stack_top = max_signal;
   lua_pushboolean(L, 1);
@@ -405,13 +409,6 @@ int luaopen_signal (lua_State *L)
   lua_pushinteger(L, SIGINT);
   lua_pushcfunction(L, interrupted);
   lua_call(L, 2, 0);
-
-  lua_newuserdata(L, 0);
-  lua_newtable(L);
-  lua_pushcfunction(L, library_gc);
-  lua_setfield(L, -2, "__gc");
-  lua_setmetatable(L, -2);
-  luaL_ref(L, LUA_REGISTRYINDEX); /* permanent reference until lua_close */
 
   return 1;
 }
