@@ -244,43 +244,59 @@ static int status (lua_State *L, int s)
  * old_handler[, err] == signal(signal [, func])
  *
  * signal = signal number or string
- * func = Lua function to call
+ * func/"ignore"/"default" = Lua function to call
 */  
 static int l_signal (lua_State *L)
 {
+  enum {IGNORE, DEFAULT, SET};
+  static const char *options = {"ignore", "default", NULL};
   int sig = get_signal(L, 1);
+  int option;
+
+  if (lua_isstring(L, 2))
+    option = luaL_checkoption(L, 2, NULL, options);
+  else if (lua_isnil(L, 2))
+    option = DEFAULT;
+  else
+    option = (luaL_checktype(L, 2, LUA_TFUNCTION), SET);
 
   lua_pushvalue(L, 1);
   lua_rawget(L, LUA_ENVIRONINDEX); /* return old handler */
 
-  /* set handler */
-  if (lua_isnoneornil(L, 2)) /* clear handler */
+  lua_pushvalue(L, 1);
+  switch (option)
   {
-    lua_pushvalue(L, 1);
-    lua_pushnil(L);
-    lua_rawset(L, LUA_ENVIRONINDEX);
-    signal(sig, SIG_DFL);
-  } else
-  {
-    luaL_checktype(L, 2, LUA_TFUNCTION);
-    lua_pushvalue(L, 1);
-    lua_pushvalue(L, 2);
-    lua_rawset(L, LUA_ENVIRONINDEX);
+    case IGNORE:
+      lua_pushnil(L);
+      lua_rawset(L, LUA_ENVIRONINDEX);
+      signal(sig, SIG_IGN);
+      break;
+    case DEFAULT:
+      lua_pushnil(L);
+      lua_rawset(L, LUA_ENVIRONINDEX);
+      signal(sig, SIG_DFL);
+      break;
+    case SET:
+      lua_pushvalue(L, 2);
+      lua_rawset(L, LUA_ENVIRONINDEX);
 
 #if USE_SIGACTION
-    {
-      struct sigaction act;
-      act.sa_handler = handle;
-      sigemptyset(&act.sa_mask);
-      act.sa_flags = 0;
-      if (sigaction(sig, &act, NULL))
-        return status(L, 0);
-    }
+      {
+        struct sigaction act;
+        act.sa_handler = handle;
+        sigemptyset(&act.sa_mask);
+        act.sa_flags = 0;
+        if (sigaction(sig, &act, NULL))
+          return status(L, 0);
+      }
 #else
-    if (signal(sig, handle) == SIG_ERR)
-      return status(L, 0);
+      if (signal(sig, handle) == SIG_ERR)
+        return status(L, 0);
 #endif
+      break;
+    default: assert(0);
   }
+
   return 1;
 }
 
