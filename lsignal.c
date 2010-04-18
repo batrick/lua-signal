@@ -179,6 +179,7 @@ static void hook (lua_State *L, lua_Debug *ar)
       lua_pushinteger(L, i);
       lua_rawget(L, -2);
       lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
+      assert(lua_isfunction(L, -1));
       for (j = 0; lua_signals[j].name != NULL; j++)
         if (lua_signals[j].sig == i)
         {
@@ -270,11 +271,13 @@ static int l_signal (lua_State *L)
       lua_pushnil(L);
       lua_rawset(L, LUA_ENVIRONINDEX);
       signal(sig, SIG_IGN);
+      signal_stack[sig] = 0; /* race */
       break;
     case DEFAULT:
       lua_pushnil(L);
       lua_rawset(L, LUA_ENVIRONINDEX);
       signal(sig, SIG_DFL);
+      signal_stack[sig] = 0; /* race */
       break;
     case SET:
       lua_pushvalue(L, 2);
