@@ -170,7 +170,7 @@ static struct hook {
 
 static void hook (lua_State *L, lua_Debug *ar)
 {
-  int i;
+  int i, j;
   assert(L == ML);
   for (i = 0; i < signal_stack_top; i++)
     while (signal_stack[i] > 0)
@@ -179,13 +179,13 @@ static void hook (lua_State *L, lua_Debug *ar)
       lua_pushinteger(L, i);
       lua_rawget(L, -2);
       lua_replace(L, -2); /* replace _R.LUA_SIGNAL_NAME */
-      for (i = 0; lua_signals[i].name != NULL; i++)
-        if (lua_signals[i].sig == i)
+      for (j = 0; lua_signals[j].name != NULL; j++)
+        if (lua_signals[j].sig == i)
         {
-          lua_pushstring(L, lua_signals[i].name);
+          lua_pushstring(L, lua_signals[j].name);
           break;
         }
-      if (lua_signals[i].name == NULL) lua_pushliteral(L, "");
+      if (lua_signals[j].name == NULL) lua_pushliteral(L, "");
       lua_pushinteger(L, i);
       lua_call(L, 2, 0);
       signal_stack[i]--; /* warning, race condition */
@@ -249,7 +249,7 @@ static int status (lua_State *L, int s)
 static int l_signal (lua_State *L)
 {
   enum {IGNORE, DEFAULT, SET};
-  static const char *options = {"ignore", "default", NULL};
+  static const char *options[] = {"ignore", "default", NULL};
   int sig = get_signal(L, 1);
   int option;
 
