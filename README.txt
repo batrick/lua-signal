@@ -28,9 +28,13 @@ old_handler, err = signal(sig, handler)
   handler = nil or "default" --> set signal handling to default (SIG_DFL)
             "ignore" --> set signal handling to ignore (SIG_IGN)
             function --> sets handler to run upon receipt of the signal
+Notes: Registers a signal handler for `sig`. Can also set the signal handler
+       to default behavior (as defined by the OS) or set the signal handler to
+       ignore the signal.
 
 status[, err] = raise(sig)
   sig = number or string representing the signal for the handler.
+Notes: Sends signal `sig` to itself.
 
 ========================
 
@@ -39,6 +43,11 @@ For POSIX compliant systems, the following are defined:
 status[, err] = kill(pid, sig)
   pid = number representing the process to receive the signal.
   sig = number or string representing the signal to be sent.
+Notes: Sends to the process identified by the integer `pid` the signal `sig`.
+
+status[, err] = pause()
+Notes: Pauses the execution of the process until delivery of a signal that would
+       cause a signal handler to run or terminate the process.
 
 ========================
 
