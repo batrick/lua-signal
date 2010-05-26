@@ -153,10 +153,10 @@ static const struct lua_signal lua_signals[] = {
   {NULL, 0}
 };
 
-/* We may have a race condition when the stack is written to
- * and when it is read. In the worst case one signal may be ignored
- * because its write is overwritten by the Lua hook. I feel this is
- * acceptable.
+/*
+ *  The signal counts in the 1st half of the array are modified by
+ *  the handler.  The corresponding signal counts in the 2nd half
+ *  are modifed by the hook routine.
  */
 static volatile sig_atomic_t *signal_stack = NULL;
 static int signal_stack_top;
@@ -172,7 +172,7 @@ static void hook (lua_State *L, lua_Debug *ar)
   int i, j;
   assert(L == ML);
   for (i = 0; i < signal_stack_top; i++)
-    while (signal_stack[i] > 0)
+    while (signal_stack[i] != signal_stack[i+signal_stack_top])
     {
       lua_getfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
       lua_pushinteger(L, i);
@@ -188,7 +188,7 @@ static void hook (lua_State *L, lua_Debug *ar)
       if (lua_signals[j].name == NULL) lua_pushliteral(L, "");
       lua_pushinteger(L, i);
       lua_call(L, 2, 0);
-      signal_stack[i]--; /* warning, race condition */
+      signal_stack[i+signal_stack_top]++;
     }
   lua_sethook(ML, old_hook.hook, old_hook.mask, old_hook.count);
   old_hook.hook = NULL;
@@ -270,13 +270,13 @@ static int l_signal (lua_State *L)
       lua_pushnil(L);
       lua_rawset(L, LUA_ENVIRONINDEX);
       signal(sig, SIG_IGN);
-      signal_stack[sig] = 0; /* race */
+      signal_stack[sig+signal_stack_top] = signal_stack[sig] = 0;
       break;
     case DEFAULT:
       lua_pushnil(L);
       lua_rawset(L, LUA_ENVIRONINDEX);
       signal(sig, SIG_DFL);
-      signal_stack[sig] = 0; /* race */
+      signal_stack[sig+signal_stack_top] = signal_stack[sig] = 0;
       break;
     case SET:
       lua_pushvalue(L, 2);
@@ -402,12 +402,12 @@ int luaopen_signal (lua_State *L)
     if (lua_signals[i].sig > max_signal)
       max_signal = lua_signals[i].sig+1; /* +1 !!! (for < loops) */
 
-  signal_stack = lua_newuserdata(L, sizeof(volatile sig_atomic_t)*max_signal);
+  signal_stack = lua_newuserdata(L, sizeof(volatile sig_atomic_t)*max_signal*2);
   lua_newtable(L);
   lua_pushcfunction(L, library_gc);
   lua_setfield(L, -2, "__gc");
   lua_setmetatable(L, -2); /* when userdata is gc'd, close library */
-  memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal);
+  memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal*2);
   signal_stack_top = max_signal;
   lua_pushboolean(L, 1);
   lua_rawset(L, LUA_ENVIRONINDEX);
