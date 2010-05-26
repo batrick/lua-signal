@@ -27,7 +27,6 @@
 #define LUA_LIB_NAME      "signal"
 #define LUA_LIB_VERSION   1.2
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
-#define LUA_SIGNAL_COUNT  1e4
 
 #if !(defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
   #define INCLUDE_KILL  1
