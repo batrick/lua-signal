@@ -1,11 +1,6 @@
 This is a signal library for Lua 5.1. It depends on ANSI C signals and has
 some extensions that are available in POSIX, such as kill().
 
-THIS LIBRARY SETS THE HOOK FOR ALL THREADS SO IT MAY PROPAGATE TO CHILD
-THREADS. THE MAIN LUA INTERPRETER HOOK IS REPLACED BY OUR OWN WITH SIMILAR
-RESULTS. IF YOU CHANGE THE HOOK FOR A THREAD THEN THE SIGNAL HANDLER WILL
-NEVER RUN WITHIN THAT THREAD.
-
 Use Make to compile and install:
 
 make && make install
