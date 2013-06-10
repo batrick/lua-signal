@@ -7,7 +7,7 @@ make && make install
 
 You can set the destination manually using:
 
-make install SIGNAL_DESTINATION=/path/to/location
+make install DESTINATION=/path/to/location
 
 This code is distributed under the same license as Lua 5.0. You may view
 the license at the top of any of the source files.

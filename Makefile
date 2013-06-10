@@ -1,5 +1,4 @@
-SIGNAL_DESTINATION ?= /usr/local/lib/lua/5.1/
-DESTINATION = $(SIGNAL_DESTINATION)
+DESTINATION ?= /usr/local/lib/lua/5.1/
 
 LIBRARY = signal.so
 OBJECTS = $(LIBRARY)
