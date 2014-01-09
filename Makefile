@@ -13,7 +13,7 @@ install: $(LIBRARY)
 	$(INSTALL) -m 755 $(LIBRARY) $(DESTINATION)
 
 clean:
-	-rm $(OBJECTS)
+	rm -f $(OBJECTS)
 
 signal.so: lsignal.c
 	$(CC) $(CFLAGS) -shared -o $@ $^
