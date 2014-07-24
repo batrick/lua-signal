@@ -103,6 +103,9 @@ static const struct lua_signal lua_signals[] = {
 #ifdef SIGSTOP
   {"SIGSTOP", SIGSTOP},
 #endif
+#ifdef SIGTSTP
+  {"SIGTSTP", SIGTSTP},
+#endif
 #ifdef SIGTTIN
   {"SIGTTIN", SIGTTIN},
 #endif
