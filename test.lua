@@ -1,4 +1,5 @@
-require "signal"
+local signal = require "signal"
+
 
 signal.signal("SIGTERM", function(n, i) print("signal handler", n, i); end);
 
