@@ -27,6 +27,7 @@
 #define LUA_LIB_NAME      "signal"
 #define LUA_LIB_VERSION   "1.2.0"
 #define LUA_SIGNAL_NAME   "LUA_SIGNAL"
+#define LUA_SIGNAL_ENV    1
 
 #if !(defined(_POSIX_SOURCE) || defined(sun) || defined(__sun))
   #define INCLUDE_KILL  1
@@ -217,8 +218,9 @@ static int get_signal (lua_State *L, int idx)
     case LUA_TNUMBER:
       return (int) lua_tointeger(L, idx);
     case LUA_TSTRING:
+      lua_pushvalue(L, lua_upvalueindex(LUA_SIGNAL_ENV)); // push signal table upvalue
       lua_pushvalue(L, idx);
-      lua_rawget(L, LUA_ENVIRONINDEX);
+      lua_rawget(L, -2);
       if (!lua_isnumber(L, -1))
         return luaL_argerror(L, idx, "invalid signal string");
       lua_replace(L, idx);
@@ -263,27 +265,29 @@ static int l_signal (lua_State *L)
   else
     option = (luaL_checktype(L, 2, LUA_TFUNCTION), SET);
 
+  lua_pushvalue(L, lua_upvalueindex(LUA_SIGNAL_ENV)); // push signal table upvalue
+  int upvalueindex = lua_gettop(L);
   lua_pushvalue(L, 1);
-  lua_rawget(L, LUA_ENVIRONINDEX); /* return old handler */
+  lua_rawget(L, -2); /* return old handler */
 
   lua_pushvalue(L, 1);
   switch (option)
   {
     case IGNORE:
       lua_pushnil(L);
-      lua_rawset(L, LUA_ENVIRONINDEX);
+      lua_rawset(L, upvalueindex);
       signal(sig, SIG_IGN);
       signal_stack[sig+signal_stack_top] = signal_stack[sig] = 0;
       break;
     case DEFAULT:
       lua_pushnil(L);
-      lua_rawset(L, LUA_ENVIRONINDEX);
+      lua_rawset(L, upvalueindex);
       signal(sig, SIG_DFL);
       signal_stack[sig+signal_stack_top] = signal_stack[sig] = 0;
       break;
     case SET:
       lua_pushvalue(L, 2);
-      lua_rawset(L, LUA_ENVIRONINDEX);
+      lua_rawset(L, upvalueindex);
 
 #if USE_SIGACTION
       {
@@ -391,16 +395,33 @@ int luaopen_signal (lua_State *L)
     luaL_error(L, "library should be opened by the main thread");
 
   /* environment */
-  lua_newtable(L);
-  lua_replace(L, LUA_ENVIRONINDEX);
-  lua_pushvalue(L, LUA_ENVIRONINDEX);
-  lua_setfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME); /* for hooks */
+  lua_pushstring(L, "shared signal table"); // debugging
+  lua_newtable(L); /* Create a table that will hold all of our hooks */
+  int upvalue_stackpos = lua_gettop(L); // save the stack location for later
+  lua_pushvalue(L, -1); // disposable copy
+  lua_setfield(L, LUA_REGISTRYINDEX, LUA_SIGNAL_NAME);
 
-  /* add the library */
-  luaL_register(L, LUA_LIB_NAME, lib);
-  lua_pushliteral(L, LUA_LIB_VERSION);
-  lua_setfield(L, -2, "version");
+  /* register the library */
+#if LUA_VERSION_NUM == 501
+  lua_pushvalue(L, upvalue_stackpos); // third copy
+  luaI_openlib(L, LUA_LIB_NAME, lib, 1);
+  int rettable_stackpos = lua_gettop(L);
+#else
+  luaL_newlibtable(L, lib); /* Create a new table sized for the functions in lib */
+  int rettable_stackpos = lua_gettop(L);
+  lua_pushvalue(L, upvalue_stackpos); // third copy
+  luaL_setfuncs(L, lib, 1); /* Register one upvalue for every function in lib */
+#endif
 
+
+#if 0
+  assert(lua_istable(L, rettable_stackpos));
+  lua_rawget(L, rettable_stackpos);
+  assert(lua_isfunction(L, -1));
+  lua_pop(L, 1);
+#endif
+
+  /* Set up signal handlers */
   for (i = 0, max_signal = 0; lua_signals[i].name != NULL; i++)
     if (lua_signals[i].sig > max_signal)
       max_signal = lua_signals[i].sig+1; /* +1 !!! (for < loops) */
@@ -409,27 +430,29 @@ int luaopen_signal (lua_State *L)
   lua_newtable(L);
   lua_pushcfunction(L, library_gc);
   lua_setfield(L, -2, "__gc");
-  lua_setmetatable(L, -2); /* when userdata is gc'd, close library */
+  assert(lua_istable(L, rettable_stackpos));
+  lua_setmetatable(L, rettable_stackpos); /* when userdata is gc'd, close library */
   memset((void *) signal_stack, 0, sizeof(volatile sig_atomic_t)*max_signal*2);
   signal_stack_top = max_signal;
-  lua_pushboolean(L, 1);
-  lua_rawset(L, LUA_ENVIRONINDEX);
 
   while (i--) /* i set from previous for loop */
   {
     lua_pushstring(L, lua_signals[i].name);
     lua_pushinteger(L, lua_signals[i].sig);
-    lua_rawset(L, LUA_ENVIRONINDEX); /* add copy to environment table */
-    lua_pushstring(L, lua_signals[i].name);
-    lua_pushinteger(L, lua_signals[i].sig);
-    lua_settable(L, -3); /* add copy to signal table */
+    assert(lua_istable(L, upvalue_stackpos));
+    lua_rawset(L, upvalue_stackpos); /* add copy to environment table */
   }
 
+
   /* set default interrupt handler */
-  lua_getfield(L, -1, "signal");
+  assert(lua_istable(L, rettable_stackpos));
+  lua_getfield(L, rettable_stackpos, "signal");
+  assert(lua_isfunction(L, -1));
   lua_pushinteger(L, SIGINT);
   lua_pushcfunction(L, interrupted);
   lua_call(L, 2, 0);
-
+  
+  assert(lua_istable(L, rettable_stackpos));
+  lua_pushvalue(L, rettable_stackpos);
   return 1;
 }
