@@ -218,9 +218,8 @@ static int get_signal (lua_State *L, int idx)
     case LUA_TNUMBER:
       return (int) lua_tointeger(L, idx);
     case LUA_TSTRING:
-      lua_pushvalue(L, lua_upvalueindex(LUA_SIGNAL_ENV)); // push signal table upvalue
       lua_pushvalue(L, idx);
-      lua_rawget(L, -2);
+      lua_rawget(L, lua_upvalueindex(LUA_SIGNAL_ENV));
       if (!lua_isnumber(L, -1))
         return luaL_argerror(L, idx, "invalid signal string");
       lua_replace(L, idx);
@@ -265,29 +264,27 @@ static int l_signal (lua_State *L)
   else
     option = (luaL_checktype(L, 2, LUA_TFUNCTION), SET);
 
-  lua_pushvalue(L, lua_upvalueindex(LUA_SIGNAL_ENV)); // push signal table upvalue
-  int upvalueindex = lua_gettop(L);
   lua_pushvalue(L, 1);
-  lua_rawget(L, -2); /* return old handler */
+  lua_rawget(L, lua_upvalueindex(LUA_SIGNAL_ENV)); /* return old handler */
 
   lua_pushvalue(L, 1);
   switch (option)
   {
     case IGNORE:
       lua_pushnil(L);
-      lua_rawset(L, upvalueindex);
+      lua_rawset(L, lua_upvalueindex(LUA_SIGNAL_ENV));
       signal(sig, SIG_IGN);
       signal_stack[sig+signal_stack_top] = signal_stack[sig] = 0;
       break;
     case DEFAULT:
       lua_pushnil(L);
-      lua_rawset(L, upvalueindex);
+      lua_rawset(L, lua_upvalueindex(LUA_SIGNAL_ENV));
       signal(sig, SIG_DFL);
       signal_stack[sig+signal_stack_top] = signal_stack[sig] = 0;
       break;
     case SET:
       lua_pushvalue(L, 2);
-      lua_rawset(L, upvalueindex);
+      lua_rawset(L, lua_upvalueindex(LUA_SIGNAL_ENV));
 
 #if USE_SIGACTION
       {
